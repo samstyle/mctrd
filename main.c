@@ -317,12 +317,17 @@ void createscl(char* fname) {
 }
 
 void help() {
-	printf("Usage:\n");
-	printf(" list filename\t\t\tlist of files\n");
-	printf(" ctrd filename\t\t\tcreate new TRD\n");
-	printf(" cscl filename\t\t\tcreate new SCL\n");
-	printf(" add filename archname\t\tadd file to archive\n");
-	printf(" pop filename archname\t\textract file from archive\n");
+	printf("::: Usage :::\n");
+	printf("mctrd [-b][-a num] command file1 [file2]\n");
+	printf("::: Keys :::\n");
+	printf("%*s %s\n",-10,"-b","add file to archive as basic");
+	printf("%*s %s\n",-10,"-a NUM","set autostart line number for basic file");
+	printf("::: Commands :::\n");
+	printf("%*s %s\n",-25,"list image.trd","show image catalog");
+	printf("%*s %s\n",-25,"ctrd image.trd","create new TRD file");
+	printf("%*s %s\n",-25,"cscl image.scl","create new SCL file");
+	printf("%*s %s\n",-25,"add file.ext image.trd","put file into image");
+	printf("%*s %s\n",-25,"pop file.C image.trd","extract file from image");
 }
 
 int main(int ac,char* av[]) {

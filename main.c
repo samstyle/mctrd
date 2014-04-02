@@ -335,7 +335,7 @@ int main(int ac,char* av[]) {
 	while ((c = getopt(ac,av,"-a:b")) != -1) {
 		switch (c) {
 			case 'a': autoStart = atoi(optarg); break;
-			case 'b': isBasic = 1;
+			case 'b': isBasic = 1; break;
 			case 1:
 				if (!com) com = optarg;
 				else if (!fname1) fname1 = optarg;

@@ -177,7 +177,7 @@ void pack(char* fextra, char* aname, int isBasic, int autoStart) {
 			savefile(aname, obuf, 0xa0000);
 			break;
 		default:
-			printf("Unknown image format\n");
+			printf("Unknown image format : '%s'\n", aname);
 			break;
 	}
 	free(inbuf);
@@ -340,14 +340,14 @@ int main(int ac,char* av[]) {
 	int isBasic = 0;
 	int autoStart = 0;
 	int c;
-	while ((c = getopt(ac,av,"-a:bcifh")) != -1) {
+	while ((c = getopt(ac,av,"-a:bc:i:f:h")) != -1) {
 		switch (c) {
 			case 'a': autoStart = atoi(optarg); break;
 			case 'b': isBasic = 1; break;
 			case 'c': com = optarg; break;
 			case 'i': imgName = optarg; break;
 			case 'f': fleName = optarg; break;
-			case 'h': help(); return 0;
+			case 'h': help(); return 0; break;
 			case 1:
 				if (!com) com = optarg;
 				else if (!fname1) fname1 = optarg;
@@ -369,7 +369,7 @@ int main(int ac,char* av[]) {
 	else if (strcmp(com,"cscl") == 0) createscl(fname1);
 	else {
 		if (imgName) fname2 = imgName;
-		if (fleName) fname1 = imgName;
+		if (fleName) fname1 = fleName;
 		if (!fname1 || !fname2) help();
 		else if (strcmp(com,"pop") == 0) extract(fname1,fname2);
 		else if (strcmp(com,"add") == 0) pack(fname1,fname2,isBasic,autoStart);

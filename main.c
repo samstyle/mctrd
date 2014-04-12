@@ -356,11 +356,11 @@ int main(int ac,char* av[]) {
 		}
 	}
 // BSD getopt doesn't parse free arguments, do it by myself
-	while (optarg < ac) {
-		if (!com) com = av[optarg];
-		else if (!fname1) fname1 = av[optarg];
-		else if (!fname2) fname2 = av[optarg];
-		optarg++;
+	while (optind < ac) {
+		if (!com) com = av[optind];
+		else if (!fname1) fname1 = av[optind];
+		else if (!fname2) fname2 = av[optind];
+		optind++;
 	}
 	if (imgName) fname1 = imgName;
 	if (!fname1) help();

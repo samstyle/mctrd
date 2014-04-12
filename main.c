@@ -340,7 +340,7 @@ int main(int ac,char* av[]) {
 	int isBasic = 0;
 	int autoStart = 0;
 	int c;
-	while ((c = getopt(ac,av,"-a:bcif")) != -1) {
+	while ((c = getopt(ac,av,"-a:bcifh")) != -1) {
 		switch (c) {
 			case 'a': autoStart = atoi(optarg); break;
 			case 'b': isBasic = 1; break;
@@ -364,13 +364,16 @@ int main(int ac,char* av[]) {
 	}
 	if (imgName) fname1 = imgName;
 	if (!fname1) help();
-	if (strcmp(com,"list") == 0) list(fname1);
-	if (strcmp(com,"ctrd") == 0) createtrd(fname1);
-	if (strcmp(com,"cscl") == 0) createscl(fname1);
-	if (imgName) fname2 = imgName;
-	if (fleName) fname1 = imgName;
-	if (!fname1 || !fname2) help();
-	if (strcmp(com,"pop") == 0) extract(fname1,fname2);
-	if (strcmp(com,"add") == 0) pack(fname1,fname2,isBasic,autoStart);
+	else if (strcmp(com,"list") == 0) list(fname1);
+	else if (strcmp(com,"ctrd") == 0) createtrd(fname1);
+	else if (strcmp(com,"cscl") == 0) createscl(fname1);
+	else {
+		if (imgName) fname2 = imgName;
+		if (fleName) fname1 = imgName;
+		if (!fname1 || !fname2) help();
+		else if (strcmp(com,"pop") == 0) extract(fname1,fname2);
+		else if (strcmp(com,"add") == 0) pack(fname1,fname2,isBasic,autoStart);
+		else help();
+	}
 	return 0;
 }

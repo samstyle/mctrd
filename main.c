@@ -312,10 +312,9 @@ void createscl(char* fname) {
 void help() {
 	printf("::: Usage :::\n");
 	printf("mctrd [-b][-a num] command file1 [file2]\n");
-	printf("mctrd [-b][-a num] -c command -i image [-f file]\n");
 	printf("::: Keys :::\n");
-	printf("%*s %s\n",-10,"--basic | -b","add file to archive as basic");
-	printf("%*s %s\n",-10,"--autostart | -a NUM","set autostart line number for basic file");
+	printf("%*s %s\n",-25,"--basic | -b","add file to archive as basic");
+	printf("%*s %s\n",-25,"--autostart | -a NUM","set autostart line number for basic file");
 	printf("::: Commands :::\n");
 	printf("%*s %s\n",-25,"list image.trd","show image catalog");
 	printf("%*s %s\n",-25,"ctrd image.trd","create new TRD file");

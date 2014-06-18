@@ -51,7 +51,10 @@ void extractfile(char* buf, unsigned char* ptr, int fpos, char* fname) {
 }
 
 void makedsc(char* ptr, char* fname, char* fext, int len, unsigned char slen, int isBasic) {
-	strncpy(ptr, fname, 8);		// filename
+	int fnLen = strlen(fname);	// fnLen = min(strlen(fname),8)
+	if (fnLen > 8) fnLen = 8;
+	memset(ptr,' ',8);
+	memcpy(ptr,fname,fnLen);
 	ptr[8] = fext[0];		// ext
 	ptr[11] = len & 0xff;		// len
 	ptr[12] = ((len & 0xff00) >> 8);

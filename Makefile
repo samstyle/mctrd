@@ -1,2 +1,2 @@
 all : main.c
-	gcc -Wall -o mctrd main.c
+	gcc -Wall -std=c99 -o mctrd main.c

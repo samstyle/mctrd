@@ -50,51 +50,59 @@ void extractfile(char* buf, unsigned char* ptr, int fpos, char* fname) {
 	}
 }
 
-void makedsc(char* ptr, char* fname, char fext, int len, unsigned char slen, int isBasic) {
+void makedsc(char* ptr, char* fname, char* fext, int len, unsigned char slen, int isBasic) {
 	strncpy(ptr, fname, 8);		// filename
-	ptr[8] = fext;			// ext
-	ptr[11] = len & 0xff;		// length
+	ptr[8] = fext[0];		// ext
+	ptr[11] = len & 0xff;		// len
 	ptr[12] = ((len & 0xff00) >> 8);
-	ptr[13] = slen;			// sectors lenght
+	ptr[13] = slen;			// sectors len
 	if (isBasic) {
 		ptr[9] = ptr[11];
 		ptr[10] = ptr[12];
+	} else if (strlen(fext) > 2) {
+		ptr[9] = fext[1];
+		ptr[10] = fext[2];
 	} else {
 		ptr[9] = ptr[10] = 0;
 	}
 }
 
-void pack(char* fextra, char* aname, int isBasic, int autoStart) {
-	char fname[8];
-	char fext;
-	int fnsize = strlen(fextra);
-	char* dotpos = strrchr(fextra,'.');	// locate last dot
-	if (dotpos == NULL) {
-		fext = 'C';
-	} else if (dotpos[1] == 0x00) {
-		fext = 'C';
-		fnsize = dotpos - fextra;
-	} else {
-		fext = dotpos[1];
-		fnsize = dotpos - fextra;
+void addcrc(char* data, int len) {
+	unsigned int crc = 0;
+	for (int i = 0; i != len; ++i) {
+		crc += (unsigned char)data[i];
 	}
-	if (isBasic) fext = 'B';
-	if (fnsize > 8) fnsize = 8;
-	memset(fname, 0x20, 8);
-	memcpy(fname, fextra, fnsize);
-	
+	data[len] = crc & 0xff;			// crc 4 bytes LSF (!)
+	data[len+1] = (crc >> 8) & 0xff;
+	data[len+2] = (crc >> 16) & 0xff;
+	data[len+3] = (crc >> 24) & 0xff;
+}
+
+void pack(char* fileName, char* aname, int isBasic, int autoStart) {
+	// read file. if can't be opened or too large, exit
 	char *inbuf = malloc(0xff04 * sizeof(char));
-	int iflen = readfile(fextra, inbuf, 0xff00);
+	int iflen = readfile(fileName, inbuf, 0xff00);
 	if (iflen == -1) {
-		printf("Can't read file '%s'\n",fextra);
+		printf("Can't read file '%s'\n",fileName);
 		free(inbuf);
 		return;
 	}
 	if (iflen == 0) {
-		printf("Input file '%s' is too long (0xff00 is a maximum)\n",fextra);
+		printf("Input file '%s' is too long (0xff00 is a maximum)\n",fileName);
 		free(inbuf);
 		return;
 	}
+	// cut extension from filename
+	char fext[256];				// let it be...
+	char* dotpos = strrchr(fileName,'.');	// locate last dot
+	if (dotpos == NULL) {
+		strcpy(fext,"C");
+	} else {
+		*dotpos = 0x00;			// cut
+		strcpy(fext,dotpos+1);		// copy extension (3 first chars used)
+	}
+	if (isBasic) strcpy(fext,"B");		// extension for basic file
+	
 	if (isBasic) {
 		inbuf[iflen] = 0x80;
 		inbuf[iflen+1] = 0xaa;
@@ -117,8 +125,6 @@ void pack(char* fextra, char* aname, int isBasic, int autoStart) {
 	unsigned char lastsec, lasttrk, files;
 	unsigned int freesec, fpos, secnum;
 	char* ptr = obuf;
-	char dsc[16];
-	FILE *ofile;
 	
 	switch (mode) {
 		case TYPE_SCL:
@@ -127,21 +133,13 @@ void pack(char* fextra, char* aname, int isBasic, int autoStart) {
 				printf("Too many files in image\n");
 				break;
 			}
-			obuf[8]++;
-			ofile = fopen(aname, "wb");
-			if (!ofile) {
-				printf("Can't write to file '%s'\n",aname);
-				break;
-			}
-			freesec = 9 + 14 * files;			// old catalog len
-			fwrite(obuf, freesec, 1, ofile);		// save old catalog
-			makedsc(dsc, fname, fext, iflen, seclen, isBasic);	// make 14bytes-len descriptor
-			fwrite(dsc ,14, 1, ofile);			// write it
-			fwrite(obuf + freesec, olen-freesec, 1, ofile);	// write old data
-			fwrite(inbuf, dataLen, 1, ofile);		// write new data ( +2 bytes for basic)
-			if ((dataLen & 0xff) !=0)
-				fwrite(inbuf,0x100 - (dataLen & 0xff), 1, ofile);	// write end of sector
-				fclose(ofile);
+			obuf[8]++;							// inc files count
+			freesec = 9 + 14 * files;					// old catalog len
+			memmove(obuf + freesec + 14, obuf + freesec, olen - freesec);	// free space for new dsc
+			makedsc(obuf + freesec, fileName, fext, iflen, seclen, isBasic);	// make new dsc
+			memcpy(obuf + olen - 4 + 14, inbuf, seclen * 256);		// copy new data, erase old crc
+			addcrc(obuf, olen - 4 + seclen * 256 + 14);			// create new crc
+			savefile(aname, obuf, olen + seclen * 256 + 14);		// save all data
 			break;
 		case TYPE_TRD:
 			files = obuf[0x8e4];
@@ -163,7 +161,7 @@ void pack(char* fextra, char* aname, int isBasic, int autoStart) {
 			obuf[0x8e6] = ((freesec & 0xff00) >> 8);
 			while (*ptr)				// find 1st free descriptor
 				ptr += 16;
-			makedsc(ptr, fname, fext, iflen, seclen, isBasic);
+			makedsc(ptr, fileName, fext, iflen, seclen, isBasic);
 			ptr[14] = lastsec;
 			ptr[15] = lasttrk;
 			secnum = ((lasttrk << 4) + lastsec);	// free sector num
@@ -306,14 +304,9 @@ void createtrd(char* fname) {
 }
 
 void createscl(char* fname) {
-	FILE *ofile = fopen(fname, "wb");
-	if (!ofile) {
-		printf("Can't write to file '%s'\n",fname);
-	} else {
-		fwrite("SINCLAIR", 8, 1, ofile);
-		fputc(0x00, ofile);
-		fclose(ofile);
-	}
+	char data[] = {'S', 'I', 'N', 'C', 'L', 'A', 'I', 'R', 0, 0, 0, 0, 0};
+	addcrc(data, 9);
+	savefile(fname, data, sizeof(data));
 }
 
 void help() {
@@ -321,8 +314,8 @@ void help() {
 	printf("mctrd [-b][-a num] command file1 [file2]\n");
 	printf("mctrd [-b][-a num] -c command -i image [-f file]\n");
 	printf("::: Keys :::\n");
-	printf("%*s %s\n",-10,"-b","add file to archive as basic");
-	printf("%*s %s\n",-10,"-a NUM","set autostart line number for basic file");
+	printf("%*s %s\n",-10,"--basic | -b","add file to archive as basic");
+	printf("%*s %s\n",-10,"--autostart | -a NUM","set autostart line number for basic file");
 	printf("::: Commands :::\n");
 	printf("%*s %s\n",-25,"list image.trd","show image catalog");
 	printf("%*s %s\n",-25,"ctrd image.trd","create new TRD file");
@@ -335,45 +328,37 @@ int main(int ac,char* av[]) {
 	char* com = NULL;
 	char* fname1 = NULL;
 	char* fname2 = NULL;
-	char* imgName = NULL;
-	char* fleName = NULL;
 	int isBasic = 0;
 	int autoStart = 0;
-	int c;
-	while ((c = getopt(ac,av,"-a:bc:i:f:h")) != -1) {
-		switch (c) {
-			case 'a': autoStart = atoi(optarg); break;
-			case 'b': isBasic = 1; break;
-			case 'c': com = optarg; break;
-			case 'i': imgName = optarg; break;
-			case 'f': fleName = optarg; break;
-			case 'h': help(); return 0; break;
-			case 1:
-				if (!com) com = optarg;
-				else if (!fname1) fname1 = optarg;
-				else if (!fname2) fname2 = optarg;
-				break;
+	int i = 1;
+	char* parg;
+	while (i < ac) {
+		parg = av[i++];
+		if ((strcmp(parg,"-a") == 0) || (strcmp(parg,"--autostart") == 0)) {
+			if (i < ac) {
+				autoStart = atoi(av[i++]);
+			} else {
+				printf("Invalid argument count\n");
+				return 1;
+			}
+		} else if ((strcmp(parg,"-b") == 0) || (strcmp(parg,"--basic") == 0)) {
+			isBasic = 1;
+		} else if ((strcmp(parg,"-h") == 0) || (strcmp(parg,"--help") == 0)) {
+			help();
+			return 0;
+		} else {
+			if (!com) com = parg;
+			else if (!fname1) fname1 = parg;
+			else if (!fname2) fname2 = parg;
 		}
 	}
-// BSD getopt doesn't parse free arguments, do it by myself
-	while (optind < ac) {
-		if (!com) com = av[optind];
-		else if (!fname1) fname1 = av[optind];
-		else if (!fname2) fname2 = av[optind];
-		optind++;
-	}
-	if (imgName) fname1 = imgName;
 	if (!fname1) help();
 	else if (strcmp(com,"list") == 0) list(fname1);
 	else if (strcmp(com,"ctrd") == 0) createtrd(fname1);
 	else if (strcmp(com,"cscl") == 0) createscl(fname1);
-	else {
-		if (imgName) fname2 = imgName;
-		if (fleName) fname1 = fleName;
-		if (!fname1 || !fname2) help();
-		else if (strcmp(com,"pop") == 0) extract(fname1,fname2);
-		else if (strcmp(com,"add") == 0) pack(fname1,fname2,isBasic,autoStart);
-		else help();
-	}
+	else if (!fname2) help();
+	else if (strcmp(com,"pop") == 0) extract(fname1,fname2);
+	else if (strcmp(com,"add") == 0) pack(fname1,fname2,isBasic,autoStart);
+	else help();
 	return 0;
 }

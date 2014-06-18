@@ -1,7 +1,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <getopt.h>
 
 #define TYPE_UNKNOWN	0
 #define	TYPE_SCL	1

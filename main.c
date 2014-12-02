@@ -275,7 +275,7 @@ void list(char* fname) {
 				if (*ptr != 1) {
 					start = ptr[9] | (ptr[10] << 8);
 					len = ptr[11] | (ptr[12] << 8);
-					printf("%.8s\t%c\t%i\t%i\t%i\t%i\t%i\n",ptr,ptr[8],start,len,ptr[13],ptr[14],ptr[15]);
+					printf("%.8s\t%c\t%i\t%i\t%i\t%i\t%i\n",ptr,ptr[8],start,len,ptr[13],ptr[15],ptr[14]);
 				}
 				ptr+=16; i++;
 			}

@@ -270,12 +270,12 @@ void list(char* fname) {
 			}
 			break;
 		case TYPE_TRD:
-			printf("Name\t\tExt\tStart\tSize\tSLen\tTrk\tSec\n---------------------------\n");
+			printf("Name\t\tExt\tStart\tSize\tSLen\tSec\tTrk\n---------------------------\n");
 			while (*ptr && (i < 128)) {
 				if (*ptr != 1) {
 					start = ptr[9] | (ptr[10] << 8);
 					len = ptr[11] | (ptr[12] << 8);
-					printf("%.8s\t%c\t%i\t%i\t%i\t%i\t%i\n",ptr,ptr[8],start,len,ptr[13],ptr[15],ptr[14]);
+					printf("%.8s\t%c\t%i\t%i\t%i\t%i\t%i\n",ptr,ptr[8],start,len,ptr[13],ptr[14],ptr[15]);
 				}
 				ptr+=16; i++;
 			}

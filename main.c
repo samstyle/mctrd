@@ -6,6 +6,38 @@
 #define	TYPE_SCL	1
 #define	TYPE_TRD	2
 
+#ifdef _WIN32
+#define SLASH '\\'
+#endif
+#ifdef __linux
+#define SLASH '/'
+#endif
+
+typedef struct {
+	char name[10];
+	char ext[3];
+} xName;
+
+xName cutName(char* path) {
+	char fnam[strlen(path) + 1];
+	char* ptr = strrchr(path, SLASH);		// last slash
+	if (ptr) {
+		strcpy(fnam, ptr + 1);
+	} else {
+		strcpy(fnam, path);
+	}
+	ptr = strrchr(fnam, '.');
+	xName nm;
+	memset(nm.name, 0x20, 10);
+	memset(nm.ext, 0x20, 3);
+	if (ptr) {
+		*ptr = 0x00;
+		memcpy(nm.ext, ptr + 1, (strlen(ptr + 1) > 3) ? 3 : strlen(ptr + 1));
+	}
+	memcpy(nm.name, fnam, (strlen(fnam) > 10) ? 10 : strlen(fnam));
+	return nm;
+}
+
 int readfile(char* fname, char* buf, int maxlen) {
 	FILE *infile = fopen(fname,"rb");
 	if (!infile) return -1;		// failed to open file
@@ -13,7 +45,7 @@ int readfile(char* fname, char* buf, int maxlen) {
 	int iflen = ftell(infile);
 	rewind(infile);
 	if (iflen <= maxlen) {
-		fread(buf, 0xa0000, 1, infile);
+		fread(buf, iflen, 1, infile);
 	} else {
 		iflen = 0;
 	}
@@ -24,7 +56,7 @@ int readfile(char* fname, char* buf, int maxlen) {
 int savefile(char* fname, char* buf, int len) {
 	FILE *file = fopen(fname, "wb");
 	if (!file) return 0;
-	fwrite(buf, len, 1, file);
+	if (buf && (len > 0)) fwrite(buf, len, 1, file);
 	fclose(file);
 	return 1;
 }
@@ -49,23 +81,20 @@ void extractfile(char* buf, unsigned char* ptr, int fpos, char* fname) {
 	}
 }
 
-void makedsc(char* ptr, char* fname, char* fext, int len, unsigned char slen, int isBasic) {
-	int fnLen = strlen(fname);	// fnLen = min(strlen(fname),8)
-	if (fnLen > 8) fnLen = 8;
-	memset(ptr,0x20,8);
-	memcpy(ptr,fname,fnLen);
-	ptr[8] = fext[0];		// ext
+void makedsc(char* ptr, char* fname, int len, unsigned char slen, int isBasic) {
+	xName nm = cutName(fname);
+	memcpy(ptr,nm.name, 8);
 	ptr[11] = len & 0xff;		// len
 	ptr[12] = ((len & 0xff00) >> 8);
 	ptr[13] = slen;			// sectors len
 	if (isBasic) {
+		ptr[8] = 'B';
 		ptr[9] = ptr[11];
 		ptr[10] = ptr[12];
-	} else if (strlen(fext) > 2) {
-		ptr[9] = fext[1];
-		ptr[10] = fext[2];
 	} else {
-		ptr[9] = ptr[10] = 0;
+		ptr[8] = nm.ext[0];		// ext
+		ptr[9] = nm.ext[1];
+		ptr[10] = nm.ext[2];
 	}
 }
 
@@ -88,23 +117,12 @@ void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 		printf("Can't read file '%s'\n",fileName);
 		free(inbuf);
 		return;
-	}
-	if (iflen == 0) {
+	} else if (iflen == 0) {
 		printf("Input file '%s' is too long (0xff00 is a maximum)\n",fileName);
 		free(inbuf);
 		return;
 	}
 	// cut extension from filename
-	char fext[256];				// let it be...
-	char* dotpos = strrchr(fileName,'.');	// locate last dot
-	if (dotpos == NULL) {
-		strcpy(fext,"C");
-	} else {
-		*dotpos = 0x00;			// cut
-		strcpy(fext,dotpos+1);		// copy extension (3 first chars used)
-	}
-	if (isBasic) strcpy(fext,"B");		// extension for basic file
-	
 	if (isBasic) {
 		inbuf[iflen] = 0x80;
 		inbuf[iflen+1] = 0xaa;
@@ -138,7 +156,7 @@ void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 			obuf[8]++;							// inc files count
 			freesec = 9 + 14 * files;					// old catalog len
 			memmove(obuf + freesec + 14, obuf + freesec, olen - freesec);	// free space for new dsc
-			makedsc(obuf + freesec, fileName, fext, iflen, seclen, isBasic);	// make new dsc
+			makedsc(obuf + freesec, fileName, iflen, seclen, isBasic);	// make new dsc
 			memcpy(obuf + olen - 4 + 14, inbuf, seclen * 256);		// copy new data, erase old crc
 			addcrc(obuf, olen - 4 + seclen * 256 + 14);			// create new crc
 			savefile(aname, obuf, olen + seclen * 256 + 14);		// save all data
@@ -163,7 +181,7 @@ void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 			obuf[0x8e6] = ((freesec & 0xff00) >> 8);
 			while (*ptr)				// find 1st free descriptor
 				ptr += 16;
-			makedsc(ptr, fileName, fext, iflen, seclen, isBasic);
+			makedsc(ptr, fileName, iflen, seclen, isBasic);
 			ptr[14] = lastsec;
 			ptr[15] = lasttrk;
 			secnum = ((lasttrk << 4) + lastsec);	// free sector num
@@ -182,6 +200,71 @@ void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 	}
 	free(inbuf);
 	free(obuf);
+}
+
+void tapAddBlock(FILE* file, int len, char* buf, int type) {
+	int crc = type & 0xff;
+	for (int i = 0; i < len; i++) {
+		crc ^= buf[i];
+	}
+	fputc((len + 2) & 0xff, file);
+	fputc(((len + 2) >> 8) & 0xff, file);
+	fputc(type, file);
+	fwrite(buf, len, 1, file);
+	fputc(crc, file);
+}
+
+#pragma pack(push,1)
+
+typedef struct {
+	char type;
+	char name[10];
+	unsigned short dLen;
+	unsigned short aStart;
+	unsigned short pLen;
+} tHead;
+
+#pragma pack(pop)
+
+void addtotap(char* fileName, char* aname, int isBasic, int autoStart, int headLess) {
+	char fbuf[0x10000];
+	int flen = readfile(fileName, fbuf, 0xfffd);
+	if (flen == -1) {
+		printf("Can't read input file\n");
+		return;
+	} else if (flen == 0) {
+		printf("Input file '%s' is too long (0xfffd is a maximum)\n",fileName);
+		return;
+	}
+	FILE* file = fopen(aname, "ab");
+	if (!file) {
+		printf("Can't open '%s' for append\n",aname);
+	}
+	
+	if (!headLess) {
+		tHead hd;
+		memset(hd.name, 0x20, 10);
+		xName nm = cutName(fileName);
+		memcpy(hd.name, nm.name, 10);
+		hd.dLen = flen;
+		if (isBasic) {
+			hd.type = 0x00;
+			hd.aStart = autoStart;
+			hd.pLen = flen;
+		} else {
+			hd.type = 0x03;
+			hd.aStart = 0;
+			hd.pLen = 0x8000;
+		}
+/*
+		hd.dLen = htole16(hd.dLen);
+		hd.aStart = htole16(hd.aStart);
+		hd.pLen = htole16(hd.pLen);
+*/
+		tapAddBlock(file, sizeof(tHead), (char*)&hd, 0x00);
+	}
+	tapAddBlock(file, flen, fbuf, 0xff);		// data
+	fclose(file);
 }
 
 void extract(char* fextra, char* aname) {
@@ -311,6 +394,10 @@ void createscl(char* fname) {
 	savefile(fname, data, sizeof(data));
 }
 
+void createtap(char* fname) {
+	savefile(fname, NULL, 0);
+}
+
 void help() {
 	printf("::: Usage :::\n");
 	printf("mctrd [-b][-a num] command file1 [file2]\n");
@@ -331,6 +418,7 @@ int main(int ac,char* av[]) {
 	char* fname2 = NULL;
 	int isBasic = 0;
 	int autoStart = 0;
+	int headLess = 0;
 	int i = 1;
 	char* parg;
 	while (i < ac) {
@@ -347,6 +435,8 @@ int main(int ac,char* av[]) {
 		} else if ((strcmp(parg,"-h") == 0) || (strcmp(parg,"--help") == 0)) {
 			help();
 			return 0;
+		} else if ((strcmp(parg,"-n") && strcmp(parg,"--no-head")) == 0) {
+			headLess = 1;
 		} else {
 			if (!com) com = parg;
 			else if (!fname1) fname1 = parg;
@@ -357,9 +447,11 @@ int main(int ac,char* av[]) {
 	else if (strcmp(com,"list") == 0) list(fname1);
 	else if (strcmp(com,"ctrd") == 0) createtrd(fname1);
 	else if (strcmp(com,"cscl") == 0) createscl(fname1);
+	else if (strcmp(com,"ctap") == 0) createtap(fname1);
 	else if (!fname2) help();
 	else if (strcmp(com,"pop") == 0) extract(fname1,fname2);
 	else if (strcmp(com,"add") == 0) pack(fname1,fname2,isBasic,autoStart);
+	else if (strcmp(com,"atap") == 0) addtotap(fname1, fname2, isBasic, autoStart, headLess);
 	else help();
 	return 0;
 }

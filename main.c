@@ -111,15 +111,13 @@ void addcrc(char* data, int len) {
 
 void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 	// read file. if can't be opened or too large, exit
-	char *inbuf = malloc(0xff04 * sizeof(char));
+	char inbuf[0x10000];
 	int iflen = readfile(fileName, inbuf, 0xff00);
 	if (iflen == -1) {
 		printf("Can't read file '%s'\n",fileName);
-		free(inbuf);
 		return;
 	} else if (iflen == 0) {
 		printf("Input file '%s' is too long (0xff00 is a maximum)\n",fileName);
-		free(inbuf);
 		return;
 	}
 	// cut extension from filename
@@ -130,12 +128,10 @@ void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 		inbuf[iflen+3] = ((autoStart & 0xff00) >> 8);
 	}
 	
-	char *obuf = malloc(0xa0000 * sizeof(char));
+	char obuf[0xa0000];
 	int olen = readfile(aname, obuf, 0xa0000);
 	if (olen < 1) {
 		printf("Can't read output file '%s'\n", aname);
-		free(inbuf);
-		free(obuf);
 		return;
 	}
 	
@@ -198,8 +194,6 @@ void pack(char* fileName, char* aname, int isBasic, int autoStart) {
 			printf("Unknown image format : '%s'\n", aname);
 			break;
 	}
-	free(inbuf);
-	free(obuf);
 }
 
 void tapAddBlock(FILE* file, int len, char* buf, int type) {
@@ -287,11 +281,10 @@ void extract(char* fextra, char* aname) {
 	memcpy(fname,fextra,felen-2);
 	fname[8] = fextra[felen-1];
 	
-	char *buf = malloc(0xa0000 * sizeof(char));
+	char buf[0xa0000];
 	int len=readfile(aname,buf,0xa0000);
 	if (len < 1) {
 		printf("Can't read file '%s'\n",aname);
-		free(buf);
 		return;
 	}
 	int mode = testsig(buf, len);
@@ -325,15 +318,13 @@ void extract(char* fextra, char* aname) {
 			printf("Unknown image format\n");
 			break;
 	}
-	free(buf);
 }
 
 void list(char* fname) {
-	char *buf = malloc(0xa0000 * sizeof(char));
+	char buf[0xa0000];
 	int len = readfile(fname, buf,0xa0000);
 	if (len < 1) {
 		printf("Can't read file '%s'\n",fname);
-		free(buf);
 		return;
 	}
 	int mode = testsig(buf, len);
@@ -367,11 +358,10 @@ void list(char* fname) {
 			printf("Unknown image format\n");
 			break;
 	}
-	free(buf);
 }
 
 void createtrd(char* fname) {
-	char *buf = malloc(0xa0000 * sizeof(char));
+	char buf[0xa0000];
 	memset(buf, 0x00, 0xa0000);
 	buf[0x8e2] = 0x01;
 	buf[0x8e3] = 0x16;
@@ -385,7 +375,6 @@ void createtrd(char* fname) {
 		fwrite(buf,0xa0000,1,ofile);
 		fclose(ofile);
 	}
-	free(buf);
 }
 
 void createscl(char* fname) {

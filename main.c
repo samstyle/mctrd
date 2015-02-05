@@ -176,7 +176,7 @@ trdFile makeDSC(char* path, int len, int isBasic) {
 		hd.stl = nm.ext[1];
 		hd.sth = nm.ext[2];
 	}
-	hd.slen = hd.lnh + (hd.lnl ? 1 : 0);
+	hd.slen = ((len >> 8) & 0xff) + ((len & 0xff) ? 1 : 0);
 	return hd;
 }
 

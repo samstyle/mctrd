@@ -384,13 +384,14 @@ void sclPop(char* ipath, char* fname, char* oname) {
 	int find = 0;
 	while ((cnt > 0) && (find == 0)) {
 		fread((char*)&hd, 14, 1, file);
-		if (memcmp((char*)&hd, nbuf, 9) == 0) {
+		if (memcmp(hd.name, nbuf, 9) == 0) {
 			fseek(file, pos, SEEK_SET);
 			fread(buf, hd.slen << 8, 1, file);
 			find = 1;
+		} else {
+			pos += (hd.slen << 8);
+			cnt--;
 		}
-		pos += (buf[13] << 8);
-		cnt--;
 	}
 	fclose(file);
 	if (find == 0) {

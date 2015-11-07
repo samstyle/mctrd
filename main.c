@@ -503,8 +503,8 @@ void trdPop(char* ipath, char* fname, char* oname) {
 		fread((char*)&hd, 16, 1, file);
 		if (hd.name[0] == 0x00) break;
 		if (memcmp((char*)&hd, nbuf, 9) == 0) {
-			fseek(file, (hd.trk << 4) | (hd.sec & 0x0f), SEEK_SET);
-			fread(buf, hd.slen, 1, file);
+			fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
+			fread(buf, hd.slen << 8, 1, file);
 			find = 1;
 		}
 		cnt++;

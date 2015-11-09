@@ -137,6 +137,15 @@ xName cutName(char* path) {
 	return nm;
 }
 
+int stdAccumulate(unsigned char* ptr, int size, int res) {
+	while (size > 0) {
+		res += *ptr;
+		ptr++;
+		size--;
+	}
+	return res;
+}
+
 // disk common
 
 void makeName(char* name, char* buf) {
@@ -180,14 +189,28 @@ trdFile makeDSC(char* path, int len, int isBasic) {
 	return hd;
 }
 
-int saveoutput(char* oname, char* buf, trdFile hd) {
+int saveoutput(char* oname, char* buf, trdFile hd, int hobeta) {
 	int len;
 	if ((hd.lnh + (hd.lnl ? 1 : 0)) == hd.slen) {
 		len = hd.lnl | (hd.lnh << 8);
 	} else {
 		len = hd.slen << 8;
 	}
-	return savefile(oname, buf, len);
+	int res;
+	if (hobeta) {
+		char hbuf[0x10010];
+		memcpy(hbuf, (char*)&hd, 13);
+		hbuf[13] = 0x00;
+		hbuf[14] = hd.slen;
+		int crc = ((105 + 257 * stdAccumulate((unsigned char*)hbuf, 15, 0)) & 0xffff);
+		hbuf[15] = crc & 0xff;
+		hbuf[16] = ((crc & 0xff00) >> 8);
+		memcpy(hbuf + 17, buf, len);
+		res = savefile(oname, hbuf, len + 17);
+	} else {
+		res = savefile(oname, buf, len);
+	}
+	return res;
 }
 
 // tap
@@ -367,7 +390,7 @@ void sclPush(char* ipath, char* fpath, int isBasic, int aStart) {
 	fclose(file);
 }
 
-void sclPop(char* ipath, char* fname, char* oname) {
+void sclPop(char* ipath, char* fname, char* oname, int hobeta) {
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
 		printf("Can't open file '%s'\n",ipath);
@@ -397,7 +420,7 @@ void sclPop(char* ipath, char* fname, char* oname) {
 	if (find == 0) {
 		printf("File '%s' not found in image\n",fname);
 	} else {
-		saveoutput(oname, buf, hd);
+		saveoutput(oname, buf, hd, hobeta);
 	}
 }
 
@@ -487,7 +510,7 @@ void trdPush(char* ipath, char* fpath, int isBasic, int aStart) {
 	savefile(ipath, img, 0xa0000);
 }
 
-void trdPop(char* ipath, char* fname, char* oname) {
+void trdPop(char* ipath, char* fname, char* oname, int hobeta) {
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
 		printf("Can't open image '%s'\n",ipath);
@@ -513,11 +536,23 @@ void trdPop(char* ipath, char* fname, char* oname) {
 	if (find == 0) {
 		printf("Can't find file '%s' in image\n",fname);
 	} else {
-		saveoutput(oname, buf, hd);
+		saveoutput(oname, buf, hd, hobeta);
 	}
 }
 
 // commands
+
+void create(char* path) {
+	if (testExt(path, "tap")) {
+		tapCreate(path);
+	} else if (testExt(path, "scl")) {
+		sclCreate(path);
+	} else if (testExt(path, "trd")) {
+		trdCreate(path);
+	} else {
+		printf("Unknown type, use TAP SCL TRD please\n");
+	}
+}
 
 void list(char* path) {
 	int mode = getFileType(path);
@@ -555,18 +590,34 @@ void push(char* ipath, char* fpath, int isBasic, int aStart, int noHead) {
 	}
 }
 
-void pop(char* ipath, char* fname, char* oname) {
-	if (!oname) oname = fname;
+void pop(char* ipath, char* fname, char* oname, int hobeta) {
+	if (!oname) {
+		if (hobeta) {
+			char fpath[1024];
+			memset(fpath, 0, 1024);
+			char* pDot = strrchr(fname,'.');
+			if (pDot) {
+				memcpy(fpath, fname, pDot - fname + 1);
+				strcat(fpath,"$");
+				strcat(fpath,pDot + 1);
+				oname = fpath;
+			} else {
+				oname = fname;
+			}
+		} else {
+			oname = fname;
+		}
+	}
 	int type = getFileType(ipath);
 	switch(type) {
 		case TYPE_TAP:
 			tapPop(ipath, fname, oname);
 			break;
 		case TYPE_SCL:
-			sclPop(ipath, fname, oname);
+			sclPop(ipath, fname, oname, hobeta);
 			break;
 		case TYPE_TRD:
-			trdPop(ipath, fname, oname);
+			trdPop(ipath, fname, oname, hobeta);
 			break;
 		default:
 			printf("Unknown image type\n");
@@ -576,17 +627,16 @@ void pop(char* ipath, char* fname, char* oname) {
 
 void help() {
 	printf("::: Usage :::\n");
-	printf("mctrd [-h][-b][-n][-a num] command name1 [name2] [name3]\n");
+	printf("mctrd [-h][-z][-b][-n][-a num] command name1 [name2] [name3]\n");
 	printf("::: Keys :::\n");
-	printf("%*s %s\n",-32,"-h | --help","show this page");
-	printf("%*s %s\n",-32,"-b | --basic","add file to archive as basic");
 	printf("%*s %s\n",-32,"-a | --autostart NUM","set autostart line number for basic file");
+	printf("%*s %s\n",-32,"-b | --basic","add file to archive as basic");
+	printf("%*s %s\n",-32,"-h | --help","show this page");
 	printf("%*s %s\n",-32,"-n | --no-head","push file to TAP without header");
+	printf("%*s %s\n",-32,"-z | --hobeta","pop file as hobeta (SCL, TRD only)");
 	printf("::: Commands :::\n");
 	printf("%*s %s\n",-32,"list <image>","show image catalog");
-	printf("%*s %s\n",-32,"ctrd image.trd","create new TRD file");
-	printf("%*s %s\n",-32,"cscl image.scl","create new SCL file");
-	printf("%*s %s\n",-32,"ctap image.tap","create new TAP file");
+	printf("%*s %s\n",-32,"new <image>","create new image (TAP, TRD, SCL: depends on extension)");
 	printf("%*s %s\n",-32,"add <file> <image>","put file into image");
 	printf("%*s %s\n",-32,"pop <file> <image> [<outname>]","extract file from image");
 }
@@ -599,6 +649,7 @@ int main(int ac,char* av[]) {
 	int isBasic = 0;
 	int autoStart = 0xffff;
 	int headLess = 0;
+	int asHobeta = 0;
 	int i = 1;
 	char* parg;
 	while (i < ac) {
@@ -610,13 +661,15 @@ int main(int ac,char* av[]) {
 				printf("Invalid argument count\n");
 				return 1;
 			}
-		} else if ((strcmp(parg,"-b") == 0) || (strcmp(parg,"--basic") == 0)) {
+		} else if ((strcmp(parg,"-b") && strcmp(parg,"--basic")) == 0) {
 			isBasic = 1;
-		} else if ((strcmp(parg,"-h") == 0) || (strcmp(parg,"--help") == 0)) {
+		} else if ((strcmp(parg,"-h") && strcmp(parg,"--help")) == 0) {
 			help();
 			return 0;
 		} else if ((strcmp(parg,"-n") && strcmp(parg,"--no-head")) == 0) {
 			headLess = 1;
+		} else if (strcmp(parg,"--hobeta") == 0) {
+			asHobeta = 1;
 		} else {
 			if (!com) com = parg;
 			else if (!fname1) fname1 = parg;
@@ -626,13 +679,10 @@ int main(int ac,char* av[]) {
 	}
 	if (!fname1) help();
 	else if (strcmp(com,"list") == 0) list(fname1);
-	else if (strcmp(com,"ctrd") == 0) trdCreate(fname1);
-	else if (strcmp(com,"cscl") == 0) sclCreate(fname1);
-	else if (strcmp(com,"ctap") == 0) tapCreate(fname1);
+	else if (strcmp(com,"new") == 0) create(fname1);
 	else if (!fname2) help();
-	else if (strcmp(com,"pop") == 0) pop(fname2,fname1, fname3);
-	else if (strcmp(com,"add") == 0) push(fname2,fname1,isBasic,autoStart, headLess);
-	else if (strcmp(com,"atap") == 0) tapPush(fname2, fname1, isBasic, autoStart, headLess);
+	else if (strcmp(com,"pop") == 0) pop(fname2, fname1, fname3, asHobeta);
+	else if (strcmp(com,"add") == 0) push(fname2, fname1, isBasic, autoStart, headLess);
 	else help();
 	return 0;
 }

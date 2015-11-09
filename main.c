@@ -84,7 +84,7 @@ int savefile(char* path, char* buf, int len) {
 int testExt(char* path, char* ext) {
 	char* ptr = strrchr(path, '.');
 	if (!ptr) return 0;
-	char buf[strlen(ptr)];
+	char buf[255];
 	strcpy(buf, ptr + 1);
 	ptr = buf;
 	while (*ptr) {
@@ -200,8 +200,8 @@ int saveoutput(char* oname, char* buf, trdFile hd, int hobeta) {
 	if (hobeta) {
 		char hbuf[0x10010];
 		memcpy(hbuf, (char*)&hd, 13);
-		hbuf[13] = 0x00;
-		hbuf[14] = hd.slen;
+		hbuf[13] = hd.slen;
+		hbuf[14] = 0x00;
 		int crc = ((105 + 257 * stdAccumulate((unsigned char*)hbuf, 15, 0)) & 0xffff);
 		hbuf[15] = crc & 0xff;
 		hbuf[16] = ((crc & 0xff00) >> 8);
@@ -668,7 +668,7 @@ int main(int ac,char* av[]) {
 			return 0;
 		} else if ((strcmp(parg,"-n") && strcmp(parg,"--no-head")) == 0) {
 			headLess = 1;
-		} else if (strcmp(parg,"--hobeta") == 0) {
+		} else if ((strcmp(parg,"-z") && strcmp(parg,"--hobeta")) == 0) {
 			asHobeta = 1;
 		} else {
 			if (!com) com = parg;

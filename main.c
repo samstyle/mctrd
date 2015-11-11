@@ -22,6 +22,13 @@ typedef struct {
 	char ext[3];
 } xName;
 
+struct {
+	unsigned isBasic:1;
+	unsigned headLess:1;
+	unsigned asHobeta:1;
+	int aStart;
+} opt;
+
 #pragma pack(push,1)
 
 typedef struct {
@@ -169,13 +176,13 @@ int getSum(char* data, int len) {
 	return crc;
 }
 
-trdFile makeDSC(char* path, int len, int isBasic) {
+trdFile makeDSC(char* path, int len) {
 	trdFile hd;
 	xName nm = cutName(path);
 	memcpy(hd.name, nm.name, 8);
 	hd.lnl = len & 0xff;
 	hd.lnh = (len >> 8) & 0xff;
-	if (isBasic) {
+	if (opt.isBasic) {
 		hd.ext = 'B';
 		hd.stl = hd.lnl;
 		hd.sth = hd.lnh;
@@ -189,7 +196,7 @@ trdFile makeDSC(char* path, int len, int isBasic) {
 	return hd;
 }
 
-int saveoutput(char* oname, char* buf, trdFile hd, int hobeta) {
+int saveoutput(char* oname, char* buf, trdFile hd) {
 	int len;
 	if ((hd.lnh + (hd.lnl ? 1 : 0)) == hd.slen) {
 		len = hd.lnl | (hd.lnh << 8);
@@ -197,7 +204,7 @@ int saveoutput(char* oname, char* buf, trdFile hd, int hobeta) {
 		len = hd.slen << 8;
 	}
 	int res;
-	if (hobeta) {
+	if (opt.asHobeta) {
 		char hbuf[0x10010];
 		memcpy(hbuf, (char*)&hd, 13);
 		hbuf[13] = hd.slen;
@@ -260,7 +267,7 @@ void tapList(char* path) {
 	fclose(file);
 }
 
-void tapPush(char* iname, char* fname, int isBasic, int aStart, int noHead) {
+void tapPush(char* iname, char* fname) {
 	char buf[0x10000];
 	int flen = readfile(fname, buf, 0xfffd);
 	if (flen < 0) return;	
@@ -269,17 +276,17 @@ void tapPush(char* iname, char* fname, int isBasic, int aStart, int noHead) {
 		printf("Can't open '%s' for append\n", iname);
 		return;
 	}
-	if (!noHead) {
+	if (!opt.headLess) {
 		tHead hd;
 		memset(hd.name, 0x20, 10);
 		xName nm = cutName(fname);
 		memcpy(hd.name, nm.name, 10);
 		hd.dll = flen & 0xff;
 		hd.dlh = (flen >> 8) & 0xff;
-		if (isBasic) {
+		if (opt.isBasic) {
 			hd.type = 0x00;
-			hd.asl = aStart & 0xff;
-			hd.ash = (aStart >> 8) & 0xff;
+			hd.asl = opt.aStart & 0xff;
+			hd.ash = (opt.aStart >> 8) & 0xff;
 			hd.pll = hd.dll;
 			hd.plh = hd.dlh;
 		} else {
@@ -326,22 +333,22 @@ void sclList(char* path) {
 	fclose (file);
 }
 
-int prepareFile(char* path, char* buf, int isBasic, int aStart) {
+int prepareFile(char* path, char* buf) {
 	memset(buf, 0x00, 0x10000);
 	int ilen = readfile(path, buf, 0xff00);
 	if (ilen < 0) return 0;
-	if (isBasic) {
+	if (opt.isBasic) {
 		buf[ilen] = 0x80;
 		buf[ilen+1] = 0xaa;
-		buf[ilen+2] = aStart & 0xff;
-		buf[ilen+3] = (aStart >> 8) & 0xff;
+		buf[ilen+2] = opt.aStart & 0xff;
+		buf[ilen+3] = (opt.aStart >> 8) & 0xff;
 	}
 	return ilen;
 }
 
-void sclPush(char* ipath, char* fpath, int isBasic, int aStart) {
+void sclPush(char* ipath, char* fpath) {
 	char buf[0x10000];
-	int ilen = prepareFile(fpath, buf, isBasic, aStart);
+	int ilen = prepareFile(fpath, buf);
 	if (ilen == 0) return;
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
@@ -367,7 +374,7 @@ void sclPush(char* ipath, char* fpath, int isBasic, int aStart) {
 		return;
 	}
 	bufH[8]++;
-	trdFile hd = makeDSC(fpath, ilen, isBasic);
+	trdFile hd = makeDSC(fpath, ilen);
 	file = fopen(ipath, "wb");
 	if (!file) {
 		printf("Can't open image '%s' for writing\n",ipath);
@@ -390,7 +397,7 @@ void sclPush(char* ipath, char* fpath, int isBasic, int aStart) {
 	fclose(file);
 }
 
-void sclPop(char* ipath, char* fname, char* oname, int hobeta) {
+void sclPop(char* ipath, char* fname, char* oname) {
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
 		printf("Can't open file '%s'\n",ipath);
@@ -399,7 +406,7 @@ void sclPop(char* ipath, char* fname, char* oname, int hobeta) {
 	char nbuf[9];
 	char buf[0x10000];
 	makeName(fname, nbuf);
-	printf("searching name '%.9s'\n",nbuf);
+	// printf("searching name '%.9s'\n",nbuf);
 	fseek(file, 8, SEEK_SET);
 	trdFile hd;
 	int cnt = fgetc(file);
@@ -420,7 +427,7 @@ void sclPop(char* ipath, char* fname, char* oname, int hobeta) {
 	if (find == 0) {
 		printf("File '%s' not found in image\n",fname);
 	} else {
-		saveoutput(oname, buf, hd, hobeta);
+		saveoutput(oname, buf, hd);
 	}
 }
 
@@ -465,16 +472,16 @@ void trdList(char* path) {
 	fclose(file);
 }
 
-void trdPush(char* ipath, char* fpath, int isBasic, int aStart) {
+void trdPush(char* ipath, char* fpath) {
 	char buf[0x10000];
-	int ilen = prepareFile(fpath, buf, isBasic, aStart);
+	int ilen = prepareFile(fpath, buf);
 	if (ilen == 0) return;
 	char img[0xa0000];
 	if (readfile(ipath, img, 0xa0000) < 0) {
 		printf("Can't read image '%s'\n", ipath);
 		return;
 	}
-	trdFile hd = makeDSC(fpath, ilen, isBasic);
+	trdFile hd = makeDSC(fpath, ilen);
 	
 	int files = img[0x8e4];			// test files count
 	if (files > 127) {
@@ -510,7 +517,7 @@ void trdPush(char* ipath, char* fpath, int isBasic, int aStart) {
 	savefile(ipath, img, 0xa0000);
 }
 
-void trdPop(char* ipath, char* fname, char* oname, int hobeta) {
+void trdPop(char* ipath, char* fname, char* oname) {
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
 		printf("Can't open image '%s'\n",ipath);
@@ -536,7 +543,7 @@ void trdPop(char* ipath, char* fname, char* oname, int hobeta) {
 	if (find == 0) {
 		printf("Can't find file '%s' in image\n",fname);
 	} else {
-		saveoutput(oname, buf, hd, hobeta);
+		saveoutput(oname, buf, hd);
 	}
 }
 
@@ -572,17 +579,17 @@ void list(char* path) {
 	}
 }
 
-void push(char* ipath, char* fpath, int isBasic, int aStart, int noHead) {
+void push(char* ipath, char* fpath) {
 	int type = getFileType(ipath);
 	switch(type) {
 		case TYPE_TAP:
-			tapPush(ipath, fpath, isBasic, aStart, noHead);
+			tapPush(ipath, fpath);
 			break;
 		case TYPE_SCL:
-			sclPush(ipath, fpath, isBasic, aStart);
+			sclPush(ipath, fpath);
 			break;
 		case TYPE_TRD:
-			trdPush(ipath, fpath, isBasic, aStart);
+			trdPush(ipath, fpath);
 			break;
 		default:
 			printf("Unknown image type\n");
@@ -590,9 +597,9 @@ void push(char* ipath, char* fpath, int isBasic, int aStart, int noHead) {
 	}
 }
 
-void pop(char* ipath, char* fname, char* oname, int hobeta) {
+void pop(char* ipath, char* fname, char* oname) {
 	if (!oname) {
-		if (hobeta) {
+		if (opt.asHobeta) {
 			char fpath[1024];
 			memset(fpath, 0, 1024);
 			char* pDot = strrchr(fname,'.');
@@ -614,10 +621,10 @@ void pop(char* ipath, char* fname, char* oname, int hobeta) {
 			tapPop(ipath, fname, oname);
 			break;
 		case TYPE_SCL:
-			sclPop(ipath, fname, oname, hobeta);
+			sclPop(ipath, fname, oname);
 			break;
 		case TYPE_TRD:
-			trdPop(ipath, fname, oname, hobeta);
+			trdPop(ipath, fname, oname);
 			break;
 		default:
 			printf("Unknown image type\n");
@@ -646,30 +653,30 @@ int main(int ac,char* av[]) {
 	char* fname1 = NULL;
 	char* fname2 = NULL;
 	char* fname3 = NULL;
-	int isBasic = 0;
-	int autoStart = 0xffff;
-	int headLess = 0;
-	int asHobeta = 0;
+	opt.isBasic = 0;
+	opt.headLess = 0;
+	opt.asHobeta = 0;
+	opt.aStart = 0xffff;
 	int i = 1;
 	char* parg;
 	while (i < ac) {
 		parg = av[i++];
 		if ((strcmp(parg,"-a") == 0) || (strcmp(parg,"--autostart") == 0)) {
 			if (i < ac) {
-				autoStart = atoi(av[i++]);
+				opt.aStart = atoi(av[i++]);
 			} else {
 				printf("Invalid argument count\n");
 				return 1;
 			}
 		} else if ((strcmp(parg,"-b") && strcmp(parg,"--basic")) == 0) {
-			isBasic = 1;
+			opt.isBasic = 1;
 		} else if ((strcmp(parg,"-h") && strcmp(parg,"--help")) == 0) {
 			help();
 			return 0;
 		} else if ((strcmp(parg,"-n") && strcmp(parg,"--no-head")) == 0) {
-			headLess = 1;
+			opt.headLess = 1;
 		} else if ((strcmp(parg,"-z") && strcmp(parg,"--hobeta")) == 0) {
-			asHobeta = 1;
+			opt.asHobeta = 1;
 		} else {
 			if (!com) com = parg;
 			else if (!fname1) fname1 = parg;
@@ -681,8 +688,8 @@ int main(int ac,char* av[]) {
 	else if (strcmp(com,"list") == 0) list(fname1);
 	else if (strcmp(com,"new") == 0) create(fname1);
 	else if (!fname2) help();
-	else if (strcmp(com,"pop") == 0) pop(fname2, fname1, fname3, asHobeta);
-	else if (strcmp(com,"add") == 0) push(fname2, fname1, isBasic, autoStart, headLess);
+	else if (strcmp(com,"pop") == 0) pop(fname2, fname1, fname3);
+	else if (strcmp(com,"add") == 0) push(fname2, fname1);
 	else help();
 	return 0;
 }

@@ -318,9 +318,11 @@ void tapPush(char* iname, char* fname) {
 }
 
 void tapPop(char* img, char* fname, char* oname) {
+	printf("Not developed yet\n");
 }
 
 void tapRename(char* ipath, char* oname, char* nname) {
+	printf("Not developed yet\n");
 }
 
 // scl

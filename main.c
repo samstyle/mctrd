@@ -453,7 +453,8 @@ int sclSeekFile(FILE* file, char* name, trdFile* hd) {
 	int pos = 9;
 	while ((cnt > 0) && !find) {
 		fread((char*)hd, 14, 1, file);
-		if (memcmp(hd->name, name, 9) == 0) {
+		printf("%.9s:%.9s\n",(char*)hd, name);
+		if (memcmp((char*)hd, name, 9) == 0) {
 			find = 1;
 		} else {
 			pos += 14;
@@ -472,7 +473,7 @@ void sclRename(char* ipath, char* oname, char* nname) {
 	char nbuf[9];
 	makeName(oname, nbuf);
 	trdFile hd;
-	int pos = sclSeekFile(file, oname, &hd);
+	int pos = sclSeekFile(file, nbuf, &hd);
 	if (pos < 0) {
 		printf("File '%s' not found in image\n",oname);
 	} else {

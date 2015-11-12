@@ -455,7 +455,6 @@ int sclSeekFile(FILE* file, char* name, trdFile* hd) {
 	int pos = 9;
 	while ((cnt > 0) && !find) {
 		fread((char*)hd, 14, 1, file);
-		printf("%.9s:%.9s\n",(char*)hd, name);
 		if (memcmp((char*)hd, name, 9) == 0) {
 			find = 1;
 		} else {

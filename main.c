@@ -153,6 +153,21 @@ int stdAccumulate(unsigned char* ptr, int size, int res) {
 	return res;
 }
 
+int fgeti(FILE* file) {
+	int res = fgetc(file) & 0xff;
+	res |= (fgetc(file) << 8);
+	res |= (fgetc(file) << 16);
+	res |= (fgetc(file) << 24);
+	return res;
+}
+
+void fputi(FILE* file, int val) {
+	fputc(val & 0xff, file);
+	fputc((val >> 8) & 0xff, file);
+	fputc((val >> 16) & 0xff, file);
+	fputc((val >> 24) & 0xff, file);	
+}
+
 // disk common
 
 void makeName(char* name, char* buf) {
@@ -305,6 +320,9 @@ void tapPush(char* iname, char* fname) {
 void tapPop(char* img, char* fname, char* oname) {
 }
 
+void tapRename(char* ipath, char* oname, char* nname) {
+}
+
 // scl
 
 void sclCreate(char* path) {
@@ -390,10 +408,7 @@ void sclPush(char* ipath, char* fpath) {
 	crc += getSum((char*)&hd, 14);
 	crc += getSum(bufD, dsiz);
 	crc += getSum(buf, hd.slen << 8);
-	fputc(crc & 0xff, file);
-	fputc((crc >> 8) & 0xff, file);
-	fputc((crc >> 16) & 0xff, file);
-	fputc((crc >> 24) & 0xff, file);
+	fputi(file, crc);
 	fclose(file);
 }
 
@@ -424,11 +439,55 @@ void sclPop(char* ipath, char* fname, char* oname) {
 		}
 	}
 	fclose(file);
-	if (find == 0) {
+	if (!find) {
 		printf("File '%s' not found in image\n",fname);
 	} else {
 		saveoutput(oname, buf, hd);
 	}
+}
+
+int sclSeekFile(FILE* file, char* name, trdFile* hd) {
+	fseek(file, 8, SEEK_SET);
+	int cnt = fgetc(file);
+	int find = 0;
+	int pos = 9;
+	while ((cnt > 0) && !find) {
+		fread((char*)hd, 14, 1, file);
+		if (memcmp(hd->name, name, 9) == 0) {
+			find = 1;
+		} else {
+			pos += 14;
+			cnt--;
+		}
+	}
+	return find ? pos : -1;
+}
+
+void sclRename(char* ipath, char* oname, char* nname) {
+	FILE* file = fopen(ipath, "r+");
+	if (!file) {
+		printf("Can't open file '%s'\n",ipath);
+		return;
+	}
+	char nbuf[9];
+	makeName(oname, nbuf);
+	trdFile hd;
+	int pos = sclSeekFile(file, oname, &hd);
+	if (pos < 0) {
+		printf("File '%s' not found in image\n",oname);
+	} else {
+		int oldSum = getSum(nbuf, 9);
+		makeName(nname, nbuf);
+		int dif = getSum(nbuf, 9) - oldSum;	// diff to new CRC
+		fseek(file, pos, SEEK_SET);		// read old CRC
+		fwrite(nbuf, 9, 1, file);
+		fseek(file, -4, SEEK_END);
+		int crc = fgeti(file);
+		crc += dif;				// change it
+		fseek(file, -4, SEEK_END);		// write back
+		fputi(file, crc);
+	}
+	fclose(file);
 }
 
 // trd
@@ -517,6 +576,20 @@ void trdPush(char* ipath, char* fpath) {
 	savefile(ipath, img, 0xa0000);
 }
 
+int trdSeekFile(FILE* file, char* name, trdFile* hd) {
+	int find = 0;
+	int cnt = 0;
+	while ((cnt < 128) && !find) {
+		fread((char*)hd, 16, 1, file);
+		if (hd->name[0] == 0x00) break;
+		if (memcmp((char*)hd, name, 9) == 0) {
+			find = 1;
+		}
+		cnt++;
+	}
+	return find ? (cnt - 1) << 4 : -1;
+}
+
 void trdPop(char* ipath, char* fname, char* oname) {
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
@@ -527,24 +600,34 @@ void trdPop(char* ipath, char* fname, char* oname) {
 	char buf[0x10000];
 	makeName(fname, nbuf);
 	trdFile hd;
-	int find = 0;
-	int cnt = 0;
-	while ((cnt < 128) && !find) {
-		fread((char*)&hd, 16, 1, file);
-		if (hd.name[0] == 0x00) break;
-		if (memcmp((char*)&hd, nbuf, 9) == 0) {
-			fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
-			fread(buf, hd.slen << 8, 1, file);
-			find = 1;
-		}
-		cnt++;
-	}
-	fclose(file);
-	if (find == 0) {
+	if (trdSeekFile(file, nbuf, &hd) < 0) {
 		printf("Can't find file '%s' in image\n",fname);
 	} else {
+		fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
+		fread(buf, hd.slen << 8, 1, file);
 		saveoutput(oname, buf, hd);
 	}
+	fclose(file);
+}
+
+void trdRename(char* ipath, char* oname, char* nname) {
+	FILE* file = fopen(ipath, "r+");
+	if (!file) {
+		printf("Can't open image '%s'\n",ipath);
+		return;
+	}
+	char nbuf[9];
+	makeName(oname, nbuf);
+	trdFile hd;
+	int pos = trdSeekFile(file, nbuf, &hd);
+	if (pos < 0) {
+		printf("Can't find file '%s' in image\n",oname);
+	} else {
+		makeName(nname, nbuf);
+		fseek(file, pos, SEEK_SET);
+		fwrite(nbuf, 9, 1, file);
+	}
+	fclose(file);
 }
 
 // commands
@@ -632,6 +715,24 @@ void pop(char* ipath, char* fname, char* oname) {
 	}
 }
 
+void renam(char* ipath, char* oname, char* nname) {
+	int type = getFileType(ipath);
+	switch(type) {
+		case TYPE_TAP:
+			tapRename(ipath, oname, nname);
+			break;
+		case TYPE_SCL:
+			sclRename(ipath, oname, nname);
+			break;
+		case TYPE_TRD:
+			trdRename(ipath, oname, nname);
+			break;
+		default:
+			printf("Unknown image type\n");
+			break;
+	}
+}
+
 void help() {
 	printf("::: Usage :::\n");
 	printf("mctrd [-h][-z][-b][-n][-a num] command name1 [name2] [name3]\n");
@@ -646,6 +747,7 @@ void help() {
 	printf("%*s %s\n",-32,"new <image>","create new image (TAP, TRD, SCL: depends on extension)");
 	printf("%*s %s\n",-32,"add <file> <image>","put file into image");
 	printf("%*s %s\n",-32,"pop <file> <image> [<outname>]","extract file from image");
+	printf("%*s %s\n",-32,"rename <image> <name> <new.name>","rename file inside image");
 }
 
 int main(int ac,char* av[]) {
@@ -690,6 +792,8 @@ int main(int ac,char* av[]) {
 	else if (!fname2) help();
 	else if (strcmp(com,"pop") == 0) pop(fname2, fname1, fname3);
 	else if (strcmp(com,"add") == 0) push(fname2, fname1);
+	else if (!fname3) help();
+	else if (strcmp(com,"rename") == 0) renam(fname1, fname2, fname3);
 	else help();
 	return 0;
 }

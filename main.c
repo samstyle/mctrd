@@ -211,6 +211,32 @@ trdFile makeDSC(char* path, int len) {
 	return hd;
 }
 
+trdFile prepareFile(char* path, char* buf) {
+	memset(buf, 0x00, 0x10000);
+	trdFile hd;
+	int ilen;
+	memset(hd.name, 0x00, sizeof(trdFile));
+	if (opt.asHobeta) {
+		ilen = readfile(path, buf, 0xff11);	// +17 bytes header
+		if (ilen > 0) {
+			memcpy((char*)&hd, buf, 14);
+			memcpy(buf, buf+17, ilen-17);
+		}
+	} else {
+		ilen = readfile(path, buf, 0xff00);
+		if (ilen > 0) {
+			if (opt.isBasic) {
+				buf[ilen] = 0x80;
+				buf[ilen+1] = 0xaa;
+				buf[ilen+2] = opt.aStart & 0xff;
+				buf[ilen+3] = (opt.aStart >> 8) & 0xff;
+			}
+			hd = makeDSC(path, ilen);
+		}
+	}
+	return hd;
+}
+
 int saveoutput(char* oname, char* buf, trdFile hd) {
 	int len;
 	if ((hd.lnh + (hd.lnl ? 1 : 0)) == hd.slen) {
@@ -353,23 +379,10 @@ void sclList(char* path) {
 	fclose (file);
 }
 
-int prepareFile(char* path, char* buf) {
-	memset(buf, 0x00, 0x10000);
-	int ilen = readfile(path, buf, 0xff00);
-	if (ilen < 0) return 0;
-	if (opt.isBasic) {
-		buf[ilen] = 0x80;
-		buf[ilen+1] = 0xaa;
-		buf[ilen+2] = opt.aStart & 0xff;
-		buf[ilen+3] = (opt.aStart >> 8) & 0xff;
-	}
-	return ilen;
-}
-
 void sclPush(char* ipath, char* fpath) {
 	char buf[0x10000];
-	int ilen = prepareFile(fpath, buf);
-	if (ilen == 0) return;
+	trdFile hd = prepareFile(fpath, buf);
+	if (hd.name[0] == 0) return;
 	FILE* file = fopen(ipath, "rb");
 	if (!file) {
 		printf("Can't open image '%s'\n", ipath);
@@ -394,7 +407,7 @@ void sclPush(char* ipath, char* fpath) {
 		return;
 	}
 	bufH[8]++;
-	trdFile hd = makeDSC(fpath, ilen);
+//	trdFile hd = makeDSC(fpath, ilen);
 	file = fopen(ipath, "wb");
 	if (!file) {
 		printf("Can't open image '%s' for writing\n",ipath);
@@ -535,14 +548,14 @@ void trdList(char* path) {
 
 void trdPush(char* ipath, char* fpath) {
 	char buf[0x10000];
-	int ilen = prepareFile(fpath, buf);
-	if (ilen == 0) return;
+	trdFile hd = prepareFile(fpath, buf);
+	if (hd.name[0] == 0) return;
 	char img[0xa0000];
 	if (readfile(ipath, img, 0xa0000) < 0) {
 		printf("Can't read image '%s'\n", ipath);
 		return;
 	}
-	trdFile hd = makeDSC(fpath, ilen);
+//	trdFile hd = makeDSC(fpath, ilen);
 	
 	int files = img[0x8e4];			// test files count
 	if (files > 127) {
@@ -743,13 +756,13 @@ void help() {
 	printf("%*s %s\n",-32,"-b | --basic","add file to archive as basic");
 	printf("%*s %s\n",-32,"-h | --help","show this page");
 	printf("%*s %s\n",-32,"-n | --no-head","push file to TAP without header");
-	printf("%*s %s\n",-32,"-z | --hobeta","pop file as hobeta (SCL, TRD only)");
+	printf("%*s %s\n",-32,"-z | --hobeta","pop/push file as hobeta (SCL, TRD only)");
 	printf("::: Commands :::\n");
 	printf("%*s %s\n",-32,"list <image>","show image catalog");
 	printf("%*s %s\n",-32,"new <image>","create new image (TAP, TRD, SCL: depends on extension)");
 	printf("%*s %s\n",-32,"add <file> <image>","put file into image");
 	printf("%*s %s\n",-32,"pop <file> <image> [<outname>]","extract file from image");
-	printf("%*s %s\n",-32,"rename <image> <name> <new.name>","rename file inside image");
+	printf("%*s %s\n",-32,"rename <image> <oname> <nname>","rename file inside image. oname = old name, nname = new name");
 }
 
 int main(int ac,char* av[]) {

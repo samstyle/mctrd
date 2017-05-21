@@ -26,6 +26,7 @@ struct {
 	unsigned isBasic:1;
 	unsigned headLess:1;
 	unsigned asHobeta:1;
+	unsigned mono:1;
 	int aStart;
 } opt;
 
@@ -773,7 +774,8 @@ int main(int ac,char* av[]) {
 	opt.isBasic = 0;
 	opt.headLess = 0;
 	opt.asHobeta = 0;
-	opt.aStart = 0xffff;
+	opt.mono = 0;
+	opt.aStart = 0;
 	int i = 1;
 	char* parg;
 	while (i < ac) {
@@ -794,6 +796,8 @@ int main(int ac,char* av[]) {
 			opt.headLess = 1;
 		} else if ((strcmp(parg,"-z") && strcmp(parg,"--hobeta")) == 0) {
 			opt.asHobeta = 1;
+		} else if ((strcmp(parg,"-m") && strcmp(parg,"--mono")) == 0) {
+			opt.mono = 1;
 		} else {
 			if (!com) com = parg;
 			else if (!fname1) fname1 = parg;

@@ -220,7 +220,9 @@ trdFile prepareFile(char* path, char* buf) {
 	if (opt.asHobeta) {
 		ilen = readfile(path, buf, 0xff11);	// +17 bytes header
 		if (ilen > 0) {
-			memcpy((char*)&hd, buf, 14);
+			if (!buf[13])
+				buf[13] = buf[14];
+			memcpy((char*)&hd, buf, 15);
 			memcpy(buf, buf+17, ilen-17);
 		}
 	} else {
@@ -249,8 +251,8 @@ int saveoutput(char* oname, char* buf, trdFile hd) {
 	if (opt.asHobeta) {
 		char hbuf[0x10010];
 		memcpy(hbuf, (char*)&hd, 13);
-		hbuf[13] = hd.slen;
-		hbuf[14] = 0x00;
+		hbuf[13] = 0x00;
+		hbuf[14] = hd.slen;
 		int crc = ((105 + 257 * stdAccumulate((unsigned char*)hbuf, 15, 0)) & 0xffff);
 		hbuf[15] = crc & 0xff;
 		hbuf[16] = ((crc & 0xff00) >> 8);

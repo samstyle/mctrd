@@ -793,7 +793,8 @@ void help() {
 	printf("%*s %s\n",-32,"list <image>","show image catalog");
 	printf("%*s %s\n",-32,"new <image>","create new image (TAP, TRD, SCL: depends on extension)");
 	printf("%*s %s\n",-32,"add <file> <image>","put file into image");
-	printf("%*s %s\n",-32,"pop <file> <image> [<outname>]","extract file from image");
+	printf("%*s %s\n",-32,"pop <file> <image> [<outname>]","extract file from image (scl,trd)");
+	printf("%*s %s\n",-32,"pop <image>","extract all files from image (scl,trd)");
 	printf("%*s %s\n",-32,"rename <image> <oname> <nname>","rename file inside image. oname = old name, nname = new name");
 }
 

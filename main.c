@@ -172,6 +172,7 @@ void fputi(FILE* file, int val) {
 // disk common
 
 void makeName(char* name, char* buf) {
+	if (name == NULL) return;
 	memset(buf, 0x20, 9);
 	char* ptr = strrchr(name, '.');
 	if (ptr) {
@@ -437,6 +438,7 @@ void sclPop(char* ipath, char* fname, char* oname) {
 		return;
 	}
 	char nbuf[9];
+	char xbuf[256];
 	char buf[0x10000];
 	makeName(fname, nbuf);
 	// printf("searching name '%.9s'\n",nbuf);
@@ -445,18 +447,32 @@ void sclPop(char* ipath, char* fname, char* oname) {
 	int cnt = fgetc(file);
 	int pos = 9 + cnt * 14;	// data pos
 	int find = 0;
+	int num = 0;
+	size_t fpos;
 	while ((cnt > 0) && (find == 0)) {
 		fread((char*)&hd, 14, 1, file);
-		if (memcmp(hd.name, nbuf, 9) == 0) {
+		if (fname == NULL) {				// all files
+			fpos = ftell(file);
+			fseek(file, pos, SEEK_SET);
+			fread(buf, hd.slen << 8, 1, file);
+			fseek(file, fpos, SEEK_SET);
+			pos += (hd.slen << 8);
+			memset(xbuf, 0xff, 256);
+			sprintf(xbuf,"%.3i_%.8s.%c",num,hd.name,hd.ext);
+			//printf("%s\n",xbuf);
+			saveoutput(xbuf, buf, hd);
+			num++;
+		} else if (memcmp(hd.name, nbuf, 9) == 0) {	// compare name
 			fseek(file, pos, SEEK_SET);
 			fread(buf, hd.slen << 8, 1, file);
 			find = 1;
-		} else {
+		} else {					// don't save
 			pos += (hd.slen << 8);
-			cnt--;
 		}
+		cnt--;
 	}
 	fclose(file);
+	if (!fname) return;
 	if (!find) {
 		printf("File '%s' not found in image\n",fname);
 	} else {
@@ -558,8 +574,7 @@ void trdPush(char* ipath, char* fpath) {
 		printf("Can't read image '%s'\n", ipath);
 		return;
 	}
-//	trdFile hd = makeDSC(fpath, ilen);
-	
+
 	int files = img[0x8e4];			// test files count
 	if (files > 127) {
 		printf("Too many files in image\n");
@@ -571,7 +586,6 @@ void trdPush(char* ipath, char* fpath) {
 		printf("No room for file\n");
 		return;
 	}
-	
 	int lastsec = img[0x8e1] & 0xff;
 	int lasttrk = img[0x8e2] & 0xff;
 	hd.sec = lastsec;
@@ -615,10 +629,25 @@ void trdPop(char* ipath, char* fname, char* oname) {
 		return;
 	}
 	char nbuf[9];
+	char xbuf[256];
 	char buf[0x10000];
+	int num = 0;
 	makeName(fname, nbuf);
 	trdFile hd;
-	if (trdSeekFile(file, nbuf, &hd) < 0) {
+	if (fname == NULL) {
+		do {
+			fseek(file, num << 4, SEEK_SET);
+			fread(&hd, 16, 1, file);
+			if (hd.name[0] > 31) {
+				fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
+				fread(buf, hd.slen << 8, 1, file);
+				sprintf(xbuf,"%.3i_%.8s.%c",num,hd.name,hd.ext);
+				// printf("%s\n",xbuf);
+				saveoutput(xbuf, buf, hd);
+			}
+			num++;
+		} while ((num < 128) && (hd.name[0] != 0x00));
+	} else if (trdSeekFile(file, nbuf, &hd) < 0) {
 		printf("Can't find file '%s' in image\n",fname);
 	} else {
 		fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
@@ -810,8 +839,14 @@ int main(int ac,char* av[]) {
 	if (!fname1) help();
 	else if (strcmp(com,"list") == 0) list(fname1);
 	else if (strcmp(com,"new") == 0) create(fname1);
+	else if (strcmp(com,"pop") == 0) {
+		if (fname2 == NULL) {
+			pop(fname1, NULL, NULL);
+		} else {
+			pop(fname2, fname1, fname3);
+		}
+	}
 	else if (!fname2) help();
-	else if (strcmp(com,"pop") == 0) pop(fname2, fname1, fname3);
 	else if (strcmp(com,"add") == 0) push(fname2, fname1);
 	else if (!fname3) help();
 	else if (strcmp(com,"rename") == 0) renam(fname1, fname2, fname3);

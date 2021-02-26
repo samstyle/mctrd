@@ -565,16 +565,34 @@ void trdList(char* path) {
 	fclose(file);
 }
 
+void trd_put_data(char* img, char* buf, int trk, int sec, int len, int dt) {
+	if ((dt == 0x18) || (dt == 0x19)) {
+		sec = (trk << 5) | (sec & 0x0f);
+		char* ptr = buf;
+		while (len > 0) {
+			memcpy(img + (sec << 8), ptr, 0x100);
+			sec++;
+			if ((sec & 0x0f) == 0)
+				sec += 0x10;
+			ptr += 0x100;
+			len--;
+		}
+	} else {
+		sec = (trk << 4) | (sec & 0x0f);
+		memcpy(img + (sec << 8), buf, len << 8);
+	}
+}
+
 void trdPush(char* ipath, char* fpath) {
 	char buf[0x10000];
 	trdFile hd = prepareFile(fpath, buf);
 	if (hd.name[0] == 0) return;
 	char img[0xa0000];
+	memset(img, 0, 0xa0000);
 	if (readfile(ipath, img, 0xa0000) < 0) {
 		printf("Can't read image '%s'\n", ipath);
 		return;
 	}
-
 	int files = img[0x8e4];			// test files count
 	if (files > 127) {
 		printf("Too many files in image\n");
@@ -595,22 +613,25 @@ void trdPush(char* ipath, char* fpath) {
 	freesec -= hd.slen;
 	img[0x8e5] = freesec & 0xff;
 	img[0x8e6] = ((freesec & 0xff00) >> 8);
+	int diskType = img[0x8e3] & 0xff;
 	char* ptr = img;
 	while (*ptr)				// find 1st free descriptor
 		ptr += 16;
 	memcpy(ptr, (char*)&hd, 16);		// make new descriptor
 	int secnum = ((hd.trk << 4) + hd.sec);	// free sector num
-	int fpos = (secnum << 8); 		// position in image
+	// int fpos = (secnum << 8); 		// position in image
 	secnum += hd.slen;
 	img[0x8e1] = secnum & 0x0f;
 	img[0x8e2] = ((secnum & 0xfff0) >> 4);
-	memcpy(img + fpos, buf, hd.slen << 8);	// copy file data
+	trd_put_data(img, buf, hd.trk, hd.sec, hd.slen, diskType);
+	// memcpy(img + fpos, buf, hd.slen << 8);	// copy file data
 	savefile(ipath, img, 0xa0000);
 }
 
 int trdSeekFile(FILE* file, char* name, trdFile* hd) {
 	int find = 0;
 	int cnt = 0;
+	rewind(file);
 	while ((cnt < 128) && !find) {
 		fread((char*)hd, 16, 1, file);
 		if (hd->name[0] == 0x00) break;
@@ -620,6 +641,24 @@ int trdSeekFile(FILE* file, char* name, trdFile* hd) {
 		cnt++;
 	}
 	return find ? (cnt - 1) << 4 : -1;
+}
+
+void trd_get_data(FILE* file, char* buf, int trk, int sec, int len, int dt) {
+	if ((dt == 0x18) || (dt == 0x19)) {
+		fseek(file, ((trk << 5) | (sec & 0x0f)) << 8, SEEK_SET);
+		char* ptr = buf;
+		while (len > 0) {
+			fread(ptr, 0x100, 1, file);		// read 1 sec
+			if ((ftell(file) & 0xfff) == 0) {	// if eot
+				fseek(file, 0x1000, SEEK_CUR);	// skip 4Kb
+			}
+			ptr += 0x100;
+			len--;
+		}
+	} else {
+		fseek(file, ((trk << 4) | (sec & 0x0f)) << 8, SEEK_SET);
+		fread(buf, len << 8, 1, file);
+	}
 }
 
 void trdPop(char* ipath, char* fname, char* oname) {
@@ -634,13 +673,14 @@ void trdPop(char* ipath, char* fname, char* oname) {
 	int num = 0;
 	makeName(fname, nbuf);
 	trdFile hd;
+	fseek(file, 0x8e3, SEEK_SET);
+	int diskType = fgetc(file) & 0xff;	// 0x16:80ds, 17:40ds, 18:80ss, 19:40ss
 	if (fname == NULL) {
 		do {
 			fseek(file, num << 4, SEEK_SET);
 			fread(&hd, 16, 1, file);
 			if (hd.name[0] > 31) {
-				fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
-				fread(buf, hd.slen << 8, 1, file);
+				trd_get_data(file, buf, hd.trk, hd.sec, hd.slen, diskType);
 				sprintf(xbuf,"%.3i_%.8s.%c",num,hd.name,hd.ext);
 				// printf("%s\n",xbuf);
 				saveoutput(xbuf, buf, hd);
@@ -650,8 +690,7 @@ void trdPop(char* ipath, char* fname, char* oname) {
 	} else if (trdSeekFile(file, nbuf, &hd) < 0) {
 		printf("Can't find file '%s' in image\n",fname);
 	} else {
-		fseek(file, ((hd.trk << 4) | (hd.sec & 0x0f)) << 8, SEEK_SET);
-		fread(buf, hd.slen << 8, 1, file);
+		trd_get_data(file, buf, hd.trk, hd.sec, hd.slen, diskType);
 		saveoutput(oname, buf, hd);
 	}
 	fclose(file);

@@ -392,43 +392,45 @@ void sclPush(char* ipath, char* fpath) {
 		printf("Can't open image '%s'\n", ipath);
 		return;
 	}
-	char bufH[9];			// head
+	char bufH[9];				// head
 	fread(bufH, 9, 1, file);
 	int cnt = bufH[8];
 	int clen = cnt * 14;
-	char bufC[clen];		// catalog
+	char* bufC = (char*)malloc(clen);	// catalog
 	fread(bufC, clen, 1, file);
 	int dsiz = 0;
 	for (int i = 0; i < cnt; i++) {
-		dsiz += (unsigned)bufC[14 * i + 13];
+		dsiz += bufC[14 * i + 13] & 0xff;
 	}
 	dsiz <<= 8;
-	char bufD[dsiz];		// data
+	char* bufD = (char*)malloc(dsiz);	// data
 	fread(bufD, dsiz, 1, file);
 	fclose(file);
 	if ((unsigned)bufH[8] > 127) {
 		printf("Too much files in image\n");
-		return;
+	} else {
+		bufH[8]++;
+//		trdFile hd = makeDSC(fpath, ilen);
+		file = fopen(ipath, "wb");
+		if (!file) {
+			printf("Can't open image '%s' for writing\n",ipath);
+		} else {
+			fwrite(bufH, 9, 1, file);		// header
+			fwrite(bufC, clen, 1, file);		// old catalog
+			fwrite((char*)&hd, 14, 1, file);	// new DSC
+			fwrite(bufD, dsiz, 1, file);		// old data
+			fwrite(buf, hd.slen << 8, 1, file);	// new data
+			int crc = getSum(bufH, 9);
+			crc += getSum(bufC, clen);
+			crc += getSum((char*)&hd, 14);
+			crc += getSum(bufD, dsiz);
+			crc += getSum(buf, hd.slen << 8);
+			fputi(file, crc);
+			fclose(file);
+		}
 	}
-	bufH[8]++;
-//	trdFile hd = makeDSC(fpath, ilen);
-	file = fopen(ipath, "wb");
-	if (!file) {
-		printf("Can't open image '%s' for writing\n",ipath);
-		return;
-	}
-	fwrite(bufH, 9, 1, file);		// header
-	fwrite(bufC, clen, 1, file);		// old catalog
-	fwrite((char*)&hd, 14, 1, file);	// new DSC
-	fwrite(bufD, dsiz, 1, file);		// old data
-	fwrite(buf, hd.slen << 8, 1, file);	// new data
-	int crc = getSum(bufH, 9);
-	crc += getSum(bufC, clen);
-	crc += getSum((char*)&hd, 14);
-	crc += getSum(bufD, dsiz);
-	crc += getSum(buf, hd.slen << 8);
-	fputi(file, crc);
-	fclose(file);
+	free(bufC);
+	free(bufD);
 }
 
 void sclPop(char* ipath, char* fname, char* oname) {
